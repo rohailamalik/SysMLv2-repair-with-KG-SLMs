@@ -3,19 +3,12 @@ import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EPackage;
 import org.eclipse.emf.ecore.resource.Resource;
 import org.eclipse.emf.ecore.resource.ResourceSet;
-import org.eclipse.xtext.resource.XtextResourceSet;
-import com.google.inject.Injector;
 import org.omg.kerml.xtext.KerMLStandaloneSetup;
 import org.omg.kerml.xtext.xmi.KerMLxStandaloneSetup;
 import org.omg.sysml.xtext.xmi.SysMLxStandaloneSetup;
-import org.omg.sysml.xtext.SysMLStandaloneSetup;
 import org.omg.sysml.lang.sysml.SysMLPackage;
 import org.omg.sysml.lang.sysml.Element;
-import org.omg.sysml.lang.sysml.Redefinition;
-import org.omg.sysml.lang.sysml.PartDefinition;
-import org.eclipse.emf.common.util.TreeIterator;
 import org.eclipse.emf.ecore.util.EcoreUtil;
-import org.omg.sysml.lang.sysml.util.SysMLLibraryUtil;
 import org.omg.sysml.interactive.SysMLInteractive;
 
 
@@ -25,11 +18,10 @@ public class ParseSysML {
         KerMLStandaloneSetup.doSetup();
         KerMLxStandaloneSetup.doSetup();
         SysMLxStandaloneSetup.doSetup();
-        Injector injector = new SysMLStandaloneSetup().createInjectorAndDoEMFRegistration();
         
         
         SysMLInteractive interactive = SysMLInteractive.getInstance();
-        String libraryPath = "C:/Haitham/sysml-test/sysml.library";
+        String libraryPath = "C:/Data/Research/Doctoral/INCOSE/code/incose/sysml.library";
         
         interactive.loadLibrary(libraryPath);
         System.out.println("Libraries loaded from: " + libraryPath);
@@ -38,7 +30,8 @@ public class ParseSysML {
         
         System.out.println("\nResources in library set: " + resourceSet.getResources().size());        
 
-        URI uri = URI.createFileURI("C:/Haitham/sysml-test/test2.sysml");
+        URI uri = URI.createFileURI("C:/Data/Research/Doctoral/INCOSE/code/incose/test2.sysml");
+        
         Resource resource = resourceSet.getResource(uri, true);
 
         if (!resource.getErrors().isEmpty()) {
