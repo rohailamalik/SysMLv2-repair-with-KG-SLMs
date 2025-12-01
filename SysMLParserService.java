@@ -40,6 +40,12 @@ public class SysMLParserService {
         EcoreUtil.resolveAll(resourceSet);
         
     }
+    
+    public static class ParseException extends RuntimeException {
+        public ParseException(String message) {
+            super(message);
+        }
+    }
 
     // Parse a SysML code string
     public static String parseString(String sysmlText) throws Exception {
@@ -58,7 +64,7 @@ public class SysMLParserService {
 
     private static String serializeResource(Resource resource) throws Exception {
         if (!resource.getErrors().isEmpty()) {
-            throw new RuntimeException("Parse errors: " + resource.getErrors());
+            throw new ParseException("Parse errors: " + resource.getErrors());
         }
         
         EObject root = resource.getContents().get(0);

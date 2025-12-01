@@ -1,5 +1,3 @@
-import javax.xml.stream.events.Namespace;
-
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.util.EcoreUtil;
 import org.omg.sysml.lang.sysml.*;
@@ -315,7 +313,7 @@ public class SysMLSerializer {
                 Feature redefinedFeature = redef.getRedefinedFeature();
 
                 if (redefinedFeature != null) {
-                    Feature resolved = (Feature) EcoreUtil.resolve(redefinedFeature, usage);
+                    
                     
                     redefinedFeature.eClass(); // Ensure it's loaded
 

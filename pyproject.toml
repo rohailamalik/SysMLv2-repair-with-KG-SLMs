@@ -5,5 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "graphviz>=0.21",
+    "hf-xet>=1.2.0",
     "jpype1>=1.6.0",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.7",
+    "pandas>=2.3.3",
+    "sacrebleu>=2.5.1",
+    "scikit-learn>=1.7.2",
+    "torch>=2.9.0",
+    "tqdm>=4.67.1",
+    "transformers>=4.57.1",
+    "zss>=1.2.0",
 ]
