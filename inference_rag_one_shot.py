@@ -1,29 +1,75 @@
+import json
 import torch
 import re
 import textwrap
+import jupyter_client
+import queue
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 
 # --- IMPORT YOUR KG ---
 from vehicle_kg import TYPE_TO_DOMAIN, VALID_CONNECTIONS
 
-# --- CONFIGURATION ---
+# =============================================================================
+# Config
+# =============================================================================
+
 BASE_MODEL_ID = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
 ADAPTER_PATH = "./sysml_repair_model_rag_full_set"
+VAL_FILE = "./split_data/val_domain.jsonl"
+NUM_SAMPLES = 20  # Start small
 
-def load_inference_model():
-    print("Loading Base Model...")
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16,
-    )
-    base_model = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL_ID, quantization_config=bnb_config, device_map="cuda:0"
-    )
-    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
-    
-    print("Loading Adapters...")
-    model = PeftModel.from_pretrained(base_model, ADAPTER_PATH)
-    return model, tokenizer
+# =============================================================================
+# SysML Validator
+# =============================================================================
+
+class SysMLValidator:
+    def __init__(self):
+        print("Starting SysML kernel...")
+        self.km = jupyter_client.KernelManager(kernel_name='sysml')
+        self.km.start_kernel()
+        self.kc = self.km.client()
+        self.kc.start_channels()
+        self.kc.wait_for_ready()
+        print("SysML kernel started!")
+
+    def validate_code(self, code):
+        if not self.kc:
+            return {'success': False, 'errors': ['Kernel not available.']}
+            
+        msg_id = self.kc.execute(code)
+        errors = []
+
+        while True:
+            try:
+                msg = self.kc.get_iopub_msg(timeout=10)
+                msg_type = msg['header']['msg_type']
+                content = msg['content']
+
+                if msg['parent_header'].get('msg_id') != msg_id:
+                    continue
+
+                if msg_type == 'stream':
+                    output_text = content['text'].strip()
+                    if output_text and ('ERROR:' in output_text or 'failed' in output_text.lower()):
+                        errors.append(output_text)
+                elif msg_type == 'error':
+                    errors.append('\n'.join(content['traceback']))
+                elif msg_type == 'status' and content['execution_state'] == 'idle':
+                    break
+            except queue.Empty:
+                break
+        
+        return {'success': len(errors) == 0, 'errors': errors}
+
+    def shutdown(self):
+        if self.km:
+            self.kc.stop_channels()
+            self.km.shutdown_kernel()
+
+# =============================================================================
+# KG Context Helper
+# =============================================================================
 
 def get_kg_context(code):
     context_lines = []
@@ -39,88 +85,65 @@ def get_kg_context(code):
             context_lines.append(f"- {domain} can ONLY connect to: {allowed}")
     return "\n".join(context_lines)
 
-def ask_model(model, tokenizer, bad_code):
-    kg_context = get_kg_context(bad_code)
+# =============================================================================
+# Step 1: Filter to valid samples
+# =============================================================================
+
+print("Loading domain validation samples...")
+all_samples = []
+with open(VAL_FILE, 'r', encoding='utf-8') as f:
+    for line in f:
+        all_samples.append(json.loads(line))
+
+print(f"Total samples: {len(all_samples)}")
+
+print("\nFiltering to samples where good_code compiles...")
+validator = SysMLValidator()
+
+valid_samples = []
+for i, entry in enumerate(all_samples):
+    result = validator.validate_code(entry['good_code'])
+    if result['success']:
+        valid_samples.append(entry)
     
-    # We show the model an example where it SWAPS the connection to a valid neighbor.
-    one_shot_example = textwrap.dedent("""\
-        ### Instruction:
-        Analyze the SysML v2 code for semantic domain inconsistencies. Provide a reasoning trace, then the fixed code.
+    if (i + 1) % 50 == 0:
+        print(f"  {i+1}/{len(all_samples)} - Valid so far: {len(valid_samples)}")
 
-        ### Knowledge Context:
-        - 'EnginePort' belongs to Domain: mechanical_torque
-        - 'LightBulbSocket' belongs to Domain: electrical_power
-        - 'TransmissionPort' belongs to Domain: mechanical_torque
-        Valid Connections Rules:
-        - mechanical_torque can ONLY connect to: ['mechanical_torque']
+print(f"\nValid samples: {len(valid_samples)} / {len(all_samples)} ({len(valid_samples)/len(all_samples)*100:.1f}%)")
 
-        ### Broken Code:
-        part system {
-            part eng : Engine;      // mechanical
-            part bulb : Light;      // electrical
-            part trans : Gearbox;   // mechanical
-            
-            // Error: Connecting Mechanical to Electrical
-            connect eng.p to bulb.p;
-        }
+# =============================================================================
+# Step 2: Load model
+# =============================================================================
 
-        ### Analysis & Fix:
-        [ANALYSIS]
-        The code connects 'EnginePort' (mechanical_torque) to 'LightBulbSocket' (electrical_power).
-        This violates the rule: mechanical_torque can ONLY connect to mechanical_torque.
-        FOUND ERROR: Domain mismatch.
-        SEARCH: Looking for a valid 'mechanical_torque' component in the system...
-        FOUND TARGET: 'trans' (Gearbox) is mechanical_torque.
-        ACTION: Reroute connection from 'bulb.p' to 'trans.p'.
-        [/ANALYSIS]
+print("\nLoading model...")
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16,
+)
+base_model = AutoModelForCausalLM.from_pretrained(
+    BASE_MODEL_ID, quantization_config=bnb_config, device_map="cuda:0"
+)
+tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
+model = PeftModel.from_pretrained(base_model, ADAPTER_PATH)
+model.eval()
+print("Model loaded!")
 
-        [FIXED CODE]
-        part system {
-            part eng : Engine;      // mechanical
-            part bulb : Light;      // electrical
-            part trans : Gearbox;   // mechanical
-            
-            // Fixed: Re-routed to valid mechanical target
-            connect eng.p to trans.p;
-        }
-        """)
+# =============================================================================
+# Step 3: Evaluate
+# =============================================================================
 
-    # this is the actual prompt we want to answer
-    actual_prompt = textwrap.dedent(f"""\
-        ### Instruction:
-        Analyze the SysML v2 code for semantic domain inconsistencies using the provided Knowledge Graph rules. Provide a reasoning trace, then the fixed code.
+test_samples = valid_samples[:NUM_SAMPLES]
+results = []
 
-        ### Knowledge Context:
-        {kg_context}
-
-        ### Broken Code:
-        {bad_code}
-
-        ### Analysis & Fix:
-        """)
+for i, entry in enumerate(test_samples):
+    source_id = entry['source_id']
+    mutation = entry['mutation_type']
+    bad_code = entry['bad_code']
+    good_code = entry['good_code']
     
-    full_prompt = one_shot_example + "\n\n" + actual_prompt
-
-    inputs = tokenizer(full_prompt, return_tensors="pt").to("cuda")
+    print(f"\n{'='*60}")
+    print(f"Sample {i+1}/{len(test_samples)}: {source_id} / {mutation}")
     
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs, 
-            max_new_tokens=512, 
-            eos_token_id=tokenizer.eos_token_id,
-            temperature=0.1 
-        )
-        
-    full_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    
-    if "### Analysis & Fix:" in full_output:
-        # Get the last analysis block 
-        response = full_output.split("### Analysis & Fix:")[-1].strip()
-    else:
-        response = full_output
-    return response
-
-def ask_model_cot(model, tokenizer, bad_code):
+    # Build prompt with KG context
     kg_context = get_kg_context(bad_code)
     
     prompt = textwrap.dedent(f"""\
@@ -136,40 +159,82 @@ def ask_model_cot(model, tokenizer, bad_code):
         ### Analysis & Fix:
         """)
     
-    inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
+    # Generate
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     
     with torch.no_grad():
         outputs = model.generate(
-            **inputs, 
-            max_new_tokens=512, 
-            eos_token_id=tokenizer.eos_token_id,
-            temperature=0.1 
+            **inputs,
+            max_new_tokens=512,
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
         )
-        
-    full_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    # We return the whole thing so you can see the "Thought"
-    return full_output.split("### Analysis & Fix:")[-1].strip()
-
-if __name__ == "__main__":
-    model, tokenizer = load_inference_model()
     
-    print("\n" + "="*60)
-    print("TEST: ONE-SHOT PRIMED REPAIR")
-    print("============================================================")
-
-    blind_code = """package BlindRepair {
-    part def Axle { port p : AxlePort; }
-    part def Wheel { port p : WheelHubIF; }
-    part def FuelTank { port p : FuelPort; }
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    generated = response[len(prompt):]
     
-    part system {
-        part axle : Axle;
-        part wheel : Wheel;
-        part tank : FuelTank;
-        
-        connect axle.p to tank.p; 
-    }
-}"""
+    # Extract code - find line containing "code" and take everything after
+    fixed_code = None
+    lines = generated.split('\n')
+    for j, line in enumerate(lines):
+        if 'code' in line.lower():
+            fixed_code = '\n'.join(lines[j+1:]).strip()
+            break
+    
+    # Validate
+    if fixed_code:
+        result = validator.validate_code(fixed_code)
+        compiles = result['success']
+    else:
+        compiles = False
+    
+    # Print details for failures
+    if not compiles:
+        print(f"\n  --- RAW OUTPUT ({len(generated)} chars) ---")
+        print(generated[:500])
+        print(f"\n  --- EXTRACTED CODE ({len(fixed_code) if fixed_code else 0} chars) ---")
+        print(fixed_code[:300] if fixed_code else "None")
+        print(f"\n  --- GROUND TRUTH ({len(good_code)} chars) ---")
+        print(good_code[:300])
+        if fixed_code:
+            print(f"\n  --- ERROR ---")
+            print(result['errors'][0][:150] if result['errors'] else "Unknown")
+    else:
+        print(f"  PASS!")
+    
+    results.append({
+        'source_id': source_id,
+        'mutation': mutation,
+        'compiles': compiles,
+        'extracted_code': fixed_code is not None,
+    })
 
-    fix = ask_model(model, tokenizer, blind_code)
-    print(f"[MODEL OUTPUT]:\n{fix}")
+validator.shutdown()
+
+# =============================================================================
+# Summary
+# =============================================================================
+
+print(f"\n{'='*60}")
+print("DOMAIN ERROR RESULTS")
+print(f"{'='*60}")
+
+extracted = sum(1 for r in results if r['extracted_code'])
+compiled = sum(1 for r in results if r['compiles'])
+
+print(f"Code extracted: {extracted}/{len(results)} ({extracted/len(results)*100:.0f}%)")
+print(f"Compiles:       {compiled}/{len(results)} ({compiled/len(results)*100:.0f}%)")
+
+# Breakdown by mutation type
+print(f"\nBy mutation type:")
+mutation_stats = {}
+for r in results:
+    m = r['mutation']
+    if m not in mutation_stats:
+        mutation_stats[m] = {'total': 0, 'pass': 0}
+    mutation_stats[m]['total'] += 1
+    if r['compiles']:
+        mutation_stats[m]['pass'] += 1
+
+for m, stats in mutation_stats.items():
+    print(f"  {m}: {stats['pass']}/{stats['total']}")

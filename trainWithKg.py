@@ -21,9 +21,12 @@ from vehicle_kg import TYPE_TO_DOMAIN, VALID_CONNECTIONS
 # --- CONFIGURATION ---
 MODEL_ID = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
 current_dir = os.getcwd()
-SYNTAX_FILE = os.path.join(current_dir, "synthetic_dataset_main_expanded_new_final2.jsonl")
-DOMAIN_FILE = os.path.join(current_dir, "synthetic_dataset_domain_aware_full12.jsonl")
+# SYNTAX_FILE = os.path.join(current_dir, "synthetic_dataset_main_expanded_new_final2.jsonl")
+# DOMAIN_FILE = os.path.join(current_dir, "synthetic_dataset_domain_aware_full12.jsonl")
+SYNTAX_FILE = os.path.join(current_dir, "split_data/train_syntax.jsonl")
+DOMAIN_FILE = os.path.join(current_dir, "split_data/train_domain.jsonl")
 OUTPUT_DIR = os.path.join(current_dir, "sysml_repair_model_rag_full_set")
+
 
 # --- RAG to be injected to the model ---
 def get_kg_context(code):
