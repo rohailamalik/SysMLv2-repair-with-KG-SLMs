@@ -1,6 +1,8 @@
 import re
 from typing import List
 
+# NOT USED
+
 def extract_last_error_location(error: str) -> List[int]:
     """Extract last error line number based on "line : number" format"""
     

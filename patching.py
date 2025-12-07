@@ -1,7 +1,7 @@
 from typing import List, Dict, Optional
 import difflib
 
-
+# Used in one time preprocessing mainly. For creating patches from good and bad code comparison
 def compare_code_lines(bad_lines: list[str], good_lines: list[str], merge_threshold: int) -> Optional[list[tuple]]:
     """Compare two lists of code lines and return merged diff hunks."""
     matcher = difflib.SequenceMatcher(a=bad_lines, b=good_lines)
@@ -183,3 +183,7 @@ def find_exact_sublist(haystack: List[str], needle: List[str]) -> int:
             return i
 
     return -1
+
+
+def process_errors(text: str) -> str:
+    return text.replace("ERROR:", "\nERROR:").lstrip()
