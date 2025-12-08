@@ -19,6 +19,48 @@ SOLUTION_MAP = {
     "Unit expression corruption": "To solve this, the unit must be corrected to valid form"
 }
 
+SYSTEM_PROMPT = """
+You are a SysML v2 expert. Your task is to analyse a given SysML v2 code and fix it if it has issues.
+The code may be accompanied by an error from the compiler. 
+Or if the compiler did not report any errors, a set of relevant domain rules.
+Use the error description or domain rules to find the mistakes in the code. 
+Note that presence of domain rules does not guarentee that the code is broken.
+Think step by step, and instead of rewriting the entire code correctly, tell the precise fixes.
+These include telling the user which code part should be replaced by which one, or which part should be deleted or inserted, etc.
+Make sure to tell the user where exactly the changes are to be made, by using previous code lines as context.
+Adhere to the following templates in your answer. First think, and then for each fix:
+
+If it's about replacing code:
+```
+// AFTER THIS CODE (OPTIONAL)
+previous code lines indicating where to make changes
+
+// REPLACE
+put old code snipper here
+
+// WITH 
+put new code snippet here
+```
+
+If it's about deleting some code:
+```
+// AFTER THIS CODE 
+previous code lines to indicate where to make changes
+
+// DELETE
+put old code snipper here, which is to be deleted
+```
+
+If it's about adding new code:
+```
+// AFTER THIS CODE
+previous code lines to indicate where to make changes
+
+// INSERT
+put the new code snippet here which is to be inserted
+```
+"""
+
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
@@ -68,16 +110,16 @@ def create_thought(error_message: str, mutation_category: str) -> str:
         error_type, error_desc = parse_error_message(error_message)
         solution = SOLUTION_MAP.get(error_type, "")
         return (
-            f"Let's think step-by-step.\n"
+            f"<think>Let's think step-by-step.\n"
             f"Checking the rules, reading the code.\n"
             f"{error_desc}.\n"
-            f"{solution}."
+            f"{solution}<think>."
         )
     elif mutation_category == "syntax":
         return (
-            "Let's think step-by-step.\n"
+            "<think>Let's think step-by-step.\n"
             "The compiler reports syntax errors.\n"
-            "To solve this, we need to fix the syntax issues in the code at the reported lines."
+            "To solve this, we need to fix the syntax issues in the code at the reported lines.<think>"
         )
     
     return ""
@@ -86,29 +128,37 @@ def create_thought(error_message: str, mutation_category: str) -> str:
 def create_fix(patches: List[Dict[str, str]]) -> str:
     """Formats patch instructions into a readable fix description."""
     
-    fixes: List[str] = []
+    fixes: List[str] = ["Fix: \n"]
     
-    for i, patch in enumerate(patches):
+    for patch in patches:
         context = patch.get("context", "")
         before = patch.get("before", "")
         after = patch.get("after", "")
         
         parts: List[str] = []
+
+        # one block per patch
         
         # Add separator for subsequent patches
-        parts.append("\n\n## AND " if i > 0 else "### ")
+        #parts.append("\n\n## AND " if i > 0 else "### ")
+        parts.append("```") # start
         
         # Add context if present
         if context:
-            parts.append(f"AFTER THIS CODE:\n{context}\n\n")
+            #parts.append(f"AFTER THIS CODE:\n{context}\n\n")
+            parts.append(f"// AFTER THIS CODE:\n{context}\n")
         
         # Determine and format operation type
         if before and after:
-            parts.append(f"## REPLACE:\n{before}\n\n## WITH:\n{after}")
+            #parts.append(f"## REPLACE:\n{before}\n\n## WITH:\n{after}")
+            parts.append(f"// REPLACE\n{before}\n// WITH\n{after}")
         elif before:
-            parts.append(f"## DELETE:\n{before}")
+            parts.append(f"// DELETE\n{before}")
         elif after:
-            parts.append(f"## INSERT:\n{after}")
+            #parts.append(f"## INSERT:\n{after}")
+            parts.append(f"// INSERT:\n{after}")
+
+        parts.append("```") # end
         
         fixes.append("".join(parts))
     
@@ -127,7 +177,9 @@ def create_prompt(error_message: str, mutation_category: str, bad_code: str) -> 
             {error_message}
             
             ### Code:
+            ```
             {bad_code}
+            ```
         """)
     
     elif mutation_category == "domain":
@@ -140,7 +192,9 @@ def create_prompt(error_message: str, mutation_category: str, bad_code: str) -> 
             {rules}
             
             ### Code:
+            ```
             {bad_code}
+            ```
         """)
     
     return ""
@@ -170,6 +224,7 @@ def processing_function(examples):
         answer = create_completion(err, cat, patch) + tokenizer.eos_token
 
         chat = [
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": question},
             {"role": "assistant", "content": answer}
         ]
@@ -307,6 +362,8 @@ def process_dataset(path: str = DATASET_PATH):
     df = pd.read_json(path, lines=True)
     ds = Dataset.from_pandas(df).map(processing_function, batched=True)
     ds = ds.filter(lambda x: x["length"] <= MAX_LEN)
+
+    ds.to_json(parent / "dataset_with_limit_length.jsonl", lines=True)
     
     train_ds, val_ds, test_ds = split_dataset(ds)
     
