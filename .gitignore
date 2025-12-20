@@ -10,4 +10,7 @@ wheels/
 .venv
 .vscode/
 env/
-models/
+adapters/
+dataset/
+adapters/
+dataset/
