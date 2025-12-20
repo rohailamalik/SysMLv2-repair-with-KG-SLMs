@@ -15,9 +15,9 @@ dependencies = [
     "peft>=0.18.0",
     "sacrebleu>=2.5.1",
     "scikit-learn>=1.7.2",
+    "tensorboard>=2.20.0",
     "torch>=2.9.0",
     "tqdm>=4.67.1",
     "transformers>=4.57.1",
     "trl>=0.25.1",
-    "zss>=1.2.0",
 ]

@@ -3,7 +3,6 @@ This defines the relationships between quantity kinds and their valid units
 for generating domain-aware attribute/unit errors.
 """
 
-# 1. Define quantity kind domains
 QUANTITY_KINDS = {
     "MASS": "mass",
     "LENGTH": "length",
@@ -21,7 +20,6 @@ QUANTITY_KINDS = {
     "RESISTANCE": "resistance",
 }
 
-# 2. Map ISQ quantity types to quantity kinds
 ISQ_TO_QUANTITY_KIND = {
     "ISQ::mass": QUANTITY_KINDS["MASS"],
     "ISQ::length": QUANTITY_KINDS["LENGTH"],
@@ -45,7 +43,6 @@ ISQ_TO_QUANTITY_KIND = {
     "ISQ::frequency": "frequency",  
 }
 
-# 3. Map SysML value types to quantity kinds
 VALUE_TYPE_TO_QUANTITY_KIND = {
     "MassValue": QUANTITY_KINDS["MASS"],
     "LengthValue": QUANTITY_KINDS["LENGTH"],
@@ -59,7 +56,6 @@ VALUE_TYPE_TO_QUANTITY_KIND = {
     "TemperatureValue": QUANTITY_KINDS["TEMPERATURE"],
 }
 
-# 4. Map units to quantity kinds
 UNIT_TO_QUANTITY_KIND = {
     # Mass units
     "kg": QUANTITY_KINDS["MASS"],

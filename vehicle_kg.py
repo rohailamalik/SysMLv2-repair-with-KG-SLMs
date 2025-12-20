@@ -1,4 +1,3 @@
-# 1. Define high-level physical/logical domains
 DOMAINS = {
     "MECHANICAL_TORQUE": "mechanical_torque",
     "FLUID_FUEL": "fluid_fuel",
@@ -7,11 +6,8 @@ DOMAINS = {
     "MECHANICAL_FASTENING": "mechanical_fastening",
 }
 
-# 2. Map specific SysML types (from the files) to these domains
-# Add these to TYPE_TO_DOMAIN in vehicle_kg.py:
-
 TYPE_TO_DOMAIN = {
-    # --- Mechanical Torque Domain (EXISTING) ---
+    # --- Mechanical Torque Domain ---
     "DriveIF": DOMAINS["MECHANICAL_TORQUE"],
     "AxleMountIF": DOMAINS["MECHANICAL_TORQUE"],
     "WheelHubIF": DOMAINS["MECHANICAL_TORQUE"],
@@ -20,7 +16,7 @@ TYPE_TO_DOMAIN = {
     "TireInput": DOMAINS["MECHANICAL_TORQUE"],
     "TireOutput": DOMAINS["MECHANICAL_TORQUE"],
     
-    # --- Mechanical Torque Domain (NEW - from VehicleModel.sysml) ---
+    # --- Mechanical Torque Domain (from VehicleModel.sysml) ---
     "ClutchPort": DOMAINS["MECHANICAL_TORQUE"],        # Connects engine to transmission
     "ShaftPort_a": DOMAINS["MECHANICAL_TORQUE"],       # Transmission shaft
     "ShaftPort_b": DOMAINS["MECHANICAL_TORQUE"],       # Driveshaft input
@@ -33,10 +29,10 @@ TYPE_TO_DOMAIN = {
     "WheelToRoadPort": DOMAINS["MECHANICAL_TORQUE"],   # Wheel to road contact
     "VehicleToRoadPort": DOMAINS["MECHANICAL_TORQUE"], # Vehicle to road
     
-    # --- Fluid/Fuel Domain (EXISTING) ---
+    # --- Fluid/Fuel Domain ---
     "FuelPort": DOMAINS["FLUID_FUEL"],
     
-    # --- Command/Signal Domain (EXISTING) ---
+    # --- Command/Signal Domain ---
     "IgnitionCmdPort": DOMAINS["COMMAND_SIGNAL"],
     "PwrCmdPort": DOMAINS["COMMAND_SIGNAL"],
     "FuelCmdPort": DOMAINS["COMMAND_SIGNAL"],
@@ -48,7 +44,7 @@ TYPE_TO_DOMAIN = {
     "DriverCmdPort": DOMAINS["COMMAND_SIGNAL"],
     "HandPort": DOMAINS["COMMAND_SIGNAL"],
 
-    # --- Electrical Power Domain (EXISTING) ---
+    # --- Electrical Power Domain ---
     "BatteryInput": DOMAINS["ELECTRICAL_POWER"],
     "BatteryOutput": DOMAINS["ELECTRICAL_POWER"],
     "MotorInput": DOMAINS["ELECTRICAL_POWER"], 
@@ -60,7 +56,6 @@ TYPE_TO_DOMAIN = {
     "ShankCompositePort": DOMAINS["MECHANICAL_FASTENING"],
 }
 
-# For our simple case, we'll say domains can only connect to themselves
 VALID_CONNECTIONS = {
     DOMAINS["MECHANICAL_TORQUE"]: [DOMAINS["MECHANICAL_TORQUE"]],
     DOMAINS["FLUID_FUEL"]: [DOMAINS["FLUID_FUEL"]],

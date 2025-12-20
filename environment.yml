@@ -1,0 +1,19 @@
+name: sysml_fix
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy=1.26.*
+  - pytorch=2.2.*
+  - pytorch-cuda=12.1
+  - pandas
+  - scikit-learn
+  - tensorboard
+  - tqdm
+  - transformers>=4.40
+  - datasets
+  - peft
+  - trl
+  - sacrebleu
