@@ -35,6 +35,33 @@ def parse_arguments():
         default=DEFAULT_TYPE,
         help=f"Model type key (default: {DEFAULT_TYPE})"
     )
+
+    parser.add_argument(
+        "--work_dir",
+        type=str,
+        default=str(Path.cwd()),
+        help="Working directory path"
+    )
+
+    parser.add_argument(
+        "--test_data",
+        type=str,
+        default="dataset/split/test_dataset.jsonl",
+        help="Path to test dataset"
+    )
+
+    parser.add_argument(
+        "--adapters_dir",
+        type=str,
+        default="adapters",
+        help="Base adapters directory (relative to work_dir unless absolute)."
+    )
+    parser.add_argument(
+        "--results_dir",
+        type=str,
+        default="results/testing",
+        help="Base results directory (relative to work_dir unless absolute)."
+    )
     
     args = parser.parse_args()
     
@@ -52,14 +79,22 @@ def parse_arguments():
     
     return args
 
+def _resolve_under_work_dir(work_dir: Path, p: str) -> Path:
+    """Resolve p relative to work_dir unless p is already absolute."""
+    pth = Path(p)
+    return pth if pth.is_absolute() else (work_dir / pth)
 
-def setup_paths(model_name: str, test_type: str):
+def setup_paths(model_name: str, test_type: str, args):
     """Setup and create necessary directory paths."""
     model_short = model_name.split("/")[1]
     
-    WORK_DIR = Path("/scratch/work/malikr2")  # for triton cluster
+    # WORK_DIR = Path("/scratch/work/malikr2")  # for triton cluster
     # WORK_DIR = Path.cwd()  # for local use
-
+    WORK_DIR = Path(args.work_dir).expanduser().resolve()
+    
+    test_data_path = _resolve_under_work_dir(WORK_DIR, args.test_data)
+    adapters_root = _resolve_under_work_dir(WORK_DIR, args.adapters_dir)
+    results_root = _resolve_under_work_dir(WORK_DIR, args.results_dir)
     training_type = "w_cot" if test_type == "fine_tuned_cot" else "wo_cot"
     
     paths = {
@@ -67,6 +102,9 @@ def setup_paths(model_name: str, test_type: str):
         "test_data": WORK_DIR / "dataset" / "split" / "test_dataset.jsonl",
         "adapter_dir": WORK_DIR / "adapters" / model_short / training_type,
         "logging_dir": WORK_DIR / "results" / "testing" / model_short,
+        "test_data": test_data_path,
+        "adapter_dir": adapters_root / model_short / training_type,
+        "logging_dir": results_root / model_short,
         "model_short": model_short
     }
     
@@ -233,7 +271,7 @@ def main():
     model_name = cfg["model_name"]
     
     # Setup paths
-    paths = setup_paths(model_name, args.type)
+    paths = setup_paths(model_name, args.type, args)
     
     # Initialize variables to None for proper cleanup
     model = None
