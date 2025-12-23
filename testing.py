@@ -6,7 +6,6 @@ from peft import PeftModel
 from datasets import Dataset
 from pathlib import Path
 
-from prompts import SYSTEM_PROMPT_FULL_CODE, SYSTEM_PROMPT_PATCH
 from config import MODEL_CONFIGS, TEST_TYPES, MAX_GEN_TOKEN_LENGTH, TEST_BATCH_SIZE
 
 def parse_arguments():
@@ -60,7 +59,7 @@ def setup_paths(model_name: str, test_type: str):
     WORK_DIR = Path("/scratch/work/malikr2")  # for triton cluster
     # WORK_DIR = Path.cwd()  # for local use
 
-    training_type = "w_cot" if test_type == "fine_tuned_cot" else "wo_cot"
+    training_type = "code" if test_type == "fine_tuned_code" else "patch"
     
     paths = {
         "work_dir": WORK_DIR,
@@ -87,14 +86,16 @@ def load_tokenizer(model_name: str):
 
 
 def compile_full_prompt(example, test_type: str, tokenizer):
-    """Compile prompt with appropriate system and user prompt based on test type."""
-    
-    user_prompt = example["prompt"] if test_type == "baseline" else example["prompt"] + example["rules"] 
-    sys_prompt = SYSTEM_PROMPT_FULL_CODE if test_type in ["baseline", "rag_only"] else "" #SYSTEM_PROMPT_PATCH
+    """Compile prompt with system and user prompt based on test type."""
+
+    if test_type == "baseline":
+        user_prompt = example["base_prompt"] 
+    else: # rules are added in rag_only, fine_tuned_code or fine_tuned_patch
+        user_prompt = example["prompt"]
     
     prompt = [
-        {"role": "system", "content": sys_prompt},
-        {"role": "user", "content": user_prompt},
+        {"role": "system", "content": "You are a SysML v2 expert."},
+        {"role": "user", "content": user_prompt}
     ]
     
     prompt = tokenizer.apply_chat_template(
@@ -102,6 +103,7 @@ def compile_full_prompt(example, test_type: str, tokenizer):
         tokenize=False,
         add_generation_prompt=True
     )
+
     return {"messages": prompt}
 
 
@@ -134,7 +136,7 @@ def load_model(model_name: str, adapter_dir: Path, test_type: str):
         device_map="auto"
     )
     
-    if test_type in ["fine_tuned", "fine_tuned_cot"]:
+    if test_type in ["fine_tuned_code", "fine_tuned_patch"]:
         print(f"Loading LoRA adapter from: {adapter_dir}")
         model = PeftModel.from_pretrained(
             model,

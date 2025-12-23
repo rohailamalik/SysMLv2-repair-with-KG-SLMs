@@ -12,9 +12,9 @@ source activate sysml_fix
 export HF_HOME=/scratch/work/$USER/hf
 export TOKENIZERS_PARALLELISM=false
 
-srun python training.py --model qwen_coder_1p5b --type wo_cot
-srun python training.py --model qwen_coder_1p5b --type w_cot
+srun python training.py --model qwen_coder_1p5b --type code
+srun python training.py --model qwen_coder_1p5b --type patch
+srun python testing.py --model qwen_coder_1p5b --type fine_tuned_code
+srun python testing.py --model qwen_coder_1p5b --type fine_tuned_patch
 srun python testing.py --model qwen_coder_1p5b --type baseline
 srun python testing.py --model qwen_coder_1p5b --type rag_only
-srun python testing.py --model qwen_coder_1p5b --type fine_tuned
-srun python testing.py --model qwen_coder_1p5b --type fine_tuned_cot

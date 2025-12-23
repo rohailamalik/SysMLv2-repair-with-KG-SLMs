@@ -33,7 +33,7 @@ MODEL_CONFIGS = {
     }
 }
 
-TRAIN_TYPES = ["wo_cot", "w_cot"]
-TEST_TYPES = ["baseline", "rag_only", "fine_tuned", "fine_tuned_cot"]
+TRAIN_TYPES = ["code", "patch"]
+TEST_TYPES = ["baseline", "rag_only", "fine_tuned_code", "fine_tuned_patch"]
 MAX_GEN_TOKEN_LENGTH = 2048
 TEST_BATCH_SIZE = 64

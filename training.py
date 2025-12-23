@@ -109,15 +109,20 @@ def load_tokenizer(model_name: str):
 
 def compile_chat(example, tokenizer, training_type):
     """Compile chat messages from prompts and responses."""
-    if training_type == "w_cot":
-        resp = example["thought"] + example["response"]
-    else:
-        resp = example["response"]
 
-    chat = [  # during training, rules always added
-        {"role": "user", "content": example["prompt"] + example["rules"]},
-        {"role": "assistant", "content": resp + tokenizer.eos_token},
+    prompt = example["prompt"] # rules are always added during training
+
+    if training_type == "code": # output code
+        response = example["good_code"]
+    else: # output diff patch
+        response = example["diff_patch"]
+
+    chat = [
+        {"role": "user", "content": "You are a SysML v2 expert."},
+        {"role": "user", "content": prompt},
+        {"role": "assistant", "content": f"```\n{response}\n```" + tokenizer.eos_token}
     ]
+
     return {"messages": chat}
 
 
@@ -138,10 +143,10 @@ def load_datasets(train_path: Path, eval_path: Path, tokenizer, training_type):
         remove_columns=ds_eval.column_names
     )
     
-    if training_type == "w_cot":
-        print("Datasets loaded with CoT")
+    if training_type == "code":
+        print("Datasets loaded with full code as output")
     else:
-        print(f"Datasets loaded without CoT")
+        print(f"Datasets loaded with diff patches as output")
 
     print(f"Training size: {len(ds_train)}, Evaluation size: {len(ds_eval)}")
     

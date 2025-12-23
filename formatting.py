@@ -1,9 +1,8 @@
-from vehicle_kg import TYPE_TO_DOMAIN, VALID_CONNECTIONS
-from typing import List, Dict, Tuple, Set
+from knowledge import get_domain_rules
 from datasets import Dataset
-import re, random
+import random
 from collections import defaultdict
-from patching import create_fixes, create_patches, remove_comments
+from patching import create_diff_patch, remove_comments, remove_file_headers
 
 SOLUTION_MAP = {
     "Type mismatch": "To solve this, the attribute declaration should be renamed correctly based on semantic meaning.",
@@ -12,37 +11,8 @@ SOLUTION_MAP = {
     "Unit expression corruption": "To solve this, the unit must be corrected to valid form."
 }
 
-def fetch_domain_rules(code: str) -> str:
-    """Scans code and retrieves relevant domain rules."""
 
-    found_domains: Set[str] = set()
-    context_lines: List[str] = []
-    
-    # Find all matching types and their domains
-    for type_name, domain in TYPE_TO_DOMAIN.items():
-        if re.search(rf'\b{re.escape(type_name)}\b', code):
-            context_lines.append(f"- '{type_name}' belongs to Domain: {domain}")
-            found_domains.add(domain)
-    
-    # Add connection rules if domains were found
-    if found_domains:
-        context_lines.append("\nValid Connections Rules:")
-        for domain in sorted(found_domains):  # Sort for consistency
-            allowed = VALID_CONNECTIONS.get(domain, [])
-            context_lines.append(f"- {domain} can ONLY connect to: {allowed}")
-    
-    rules = "\n".join(context_lines)
-
-    return (
-        "\nUse these relevant domain rules to identify and fix any potential mistakes.\n"
-        "### Domain Rules:\n"
-        f"{rules}\n"
-        "\n"
-    )
-
-
-
-def _parse_error_message(error: str) -> Tuple[str, str]:
+def parse_error_message(error: str) -> tuple[str, str]:
     """Parses an error message into error type and description."""
 
     error = error.replace("ERROR:", "").strip()
@@ -57,7 +27,7 @@ def _parse_error_message(error: str) -> Tuple[str, str]:
     return err_type, err_desc
 
 
-def _create_thought(error_message: str, mutation_category: str) -> str:
+def create_thought(error_message: str, mutation_category: str) -> str:
     """Generates analysis thought process based on error type."""
     
     if mutation_category == "none":
@@ -68,7 +38,7 @@ def _create_thought(error_message: str, mutation_category: str) -> str:
         )
     
     elif mutation_category == "domain":
-        error_type, error_desc = _parse_error_message(error_message)
+        error_type, error_desc = parse_error_message(error_message)
         solution = SOLUTION_MAP.get(error_type, "")
         thought = (
             "Let's think step-by-step.\n"
@@ -89,84 +59,68 @@ def _create_thought(error_message: str, mutation_category: str) -> str:
     return f"<THINK>\n{thought}\n</THINK>\n"
     
     
-
-
-def _create_prompt(error_message: str, mutation_category: str, bad_code: str) -> str:
+def create_prompt(error_message: str, mutation_category: str, bad_code: str, add_rules: bool=True) -> str:
     """Creates a prompt for the LLM based on error type."""
 
     if mutation_category == "syntax":
-        return (
+        prompt = (
             "Analyze and repair the following SysML v2 code for errors reported by the compiler.\n"
             "\n"
             "### Compiler Error:\n"
             f"{error_message}\n"
-            "\n"
-            "### Code:\n"
-            "```\n"
-            f"{bad_code}\n"
-            "```"
         )
     
-    else:  # for domain and correct examples
-        return (
-            "Analyze the following SysML v2 code for any potential domain inconsistencies or mistakes, and repair accordingly.\n"
-            "\n"
-            "### Code:\n"
-            "```\n"
-            f"{bad_code}\n"
-            "```"
+    elif add_rules:  # for domain and correct examples
+        domain_rules = get_domain_rules(bad_code)
+        prompt = (
+            "Analyze and repair the following SysML v2 code if there are any potential domain or connection inconsistencies or mistakes.\n"
+            "Use these relevant rules to identify and fix any potential mistakes.\n"
+            f"{domain_rules}\n"
         )
-
-
-def _create_response(fixes: str) -> str:
-    """Creates the completion response with fix."""
-
-    if not fixes:
-        response = "\n<NO_CHANGE>\n"
     else:
-        fixes = [f"<FIX>\n{fix}\n</FIX>" for fix in fixes]
-        response = "\n".join(fixes)
-    
-    return response
+        prompt = (
+            "Analyze and repair the following SysML v2 code if there are any potential domain or connection inconsistencies or mistakes.\n"
+        )
+
+    return prompt + f"\n\n### Code: \n```\n{bad_code}\n```"
 
 
-
-def processing_function(example, tokenizer) -> Dict:
+def processing_function(example, tokenizer) -> dict:
     """Create patches, fix, prompts, fix responses, chat and its length for an entry"""
     try:
+        
         error_msg = example["error_message"]
         category = example["mutation_category"]
-        bad_code = remove_comments(example["bad_code"])
-        good_code = remove_comments(example["good_code"]) 
+        
         # comments are removed due to them being leftover during dataset synthesis
+        bad_code = remove_comments(example["bad_code"])
+        good_code = remove_comments(example["good_code"])
 
-        prompt = _create_prompt(error_msg, category, bad_code)
-        rules = fetch_domain_rules(bad_code)
+        diff_patch = create_diff_patch(bad_code, good_code)
+        diff_patch = remove_file_headers(diff_patch)
         
-        thought = _create_thought(error_msg, category)
-        patches = create_patches(bad_code, good_code)
-        fixes = create_fixes(patches)
-        response = _create_response(fixes)
+        base_prompt = create_prompt(error_msg, category, bad_code, add_rules=False) 
+        prompt = create_prompt(error_msg, category, bad_code, add_rules=True) 
         
+        # this is only for length computation. 
         chat = [
-            {"role": "user", "content": prompt + rules},
-            {"role": "assistant", "content": thought + response + tokenizer.eos_token},
+            {"role": "user", "content": prompt},
+            {"role": "assistant", "content": f"```\n{diff_patch}\n```" + tokenizer.eos_token}
         ]
 
+        # when training, chat template is applied automatically
         ids = tokenizer.apply_chat_template(
             chat,
             tokenize=True,
             add_generation_prompt=False,
-        ) # this is only for length computation here since internally template is applied anyways
+        )
 
         return {
             "bad_code": bad_code,
             "good_code": good_code,
-            "patches": patches,
+            "diff_patch": diff_patch,
+            "base_prompt": base_prompt,
             "prompt": prompt,
-            "rules": rules,
-            "thought": thought,
-            "response": response,
             "length": len(ids),
         }
 
@@ -179,7 +133,7 @@ def split_dataset(
     val_ratio: float = 0.15,
     test_ratio: float = 0.15,
     seed: int = 42
-    ) -> Tuple[Dataset, Dataset, Dataset]:
+    ) -> tuple[Dataset, Dataset, Dataset]:
     
     """
     Split dataset into train/val/test ensuring no source_id leakage.
@@ -280,14 +234,15 @@ def split_dataset(
     overlap_train_val = train_ids & val_ids
     overlap_train_test = train_ids & test_ids
     overlap_val_test = val_ids & test_ids
+        
+    print(f"Split sizes: train={len(train)}, val={len(val)}, test={len(test)}")
+    print(f"Data Overlap: "
+              f"train-val: {len(overlap_train_val)}, "
+              f"train-test: {len(overlap_train_test)}, "
+              f"val-test: {len(overlap_val_test)}")
     
     # Val-Test overlap doesnt really matter since model is not being trained on val
     if overlap_train_val or overlap_train_test:
-        raise ValueError(f"Data leakage detected! "
-                        f"train-val: {len(overlap_train_val)}, "
-                        f"train-test: {len(overlap_train_test)}, "
-                        f"val-test: {len(overlap_val_test)}")
-        
-    print(f"Split sizes: train={len(train)}, val={len(val)}, test={len(test)}")
+        print("Data leakage detected!!")
     
     return train, val, test
