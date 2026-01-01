@@ -22,7 +22,7 @@ MODEL_CONFIGS = {
     },
 
     "deepseek_coder_6p7b": {
-        "model_name": "deepseek-ai/deepseek-coder-6.7b-base",
+        "model_name": "deepseek-ai/deepseek-coder-6.7b-instruct",
         "lora_r": 8,
         "lora_alpha": 16,
         "lora_dropout": 0.05,
@@ -33,7 +33,7 @@ MODEL_CONFIGS = {
     }
 }
 
-TRAIN_TYPES = ["code", "patch"]
+TRAIN_TYPES = ["code", "code_worules", "patch"]
 TEST_TYPES = ["baseline", "rag_only", "fine_tuned_code", "fine_tuned_patch"]
 MAX_GEN_TOKEN_LENGTH = 2048
-TEST_BATCH_SIZE = 64
+TEST_BATCH_SIZE = 4

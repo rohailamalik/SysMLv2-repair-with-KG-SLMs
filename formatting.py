@@ -2,130 +2,101 @@ from knowledge import get_domain_rules
 from datasets import Dataset
 import random
 from collections import defaultdict
-from patching import create_diff_patch, remove_comments, remove_file_headers
-
-SOLUTION_MAP = {
-    "Type mismatch": "To solve this, the attribute declaration should be renamed correctly based on semantic meaning.",
-    "Domain violation": "To solve this, we need to reroute this connection to a compatible port as per the rules.",
-    "Quantity mismatch": "To solve this, we need to assign correct units to this attribute.",
-    "Unit expression corruption": "To solve this, the unit must be corrected to valid form."
-}
+from patching import create_diff_patch
+from utils import remove_comments
 
 
-def parse_error_message(error: str) -> tuple[str, str]:
-    """Parses an error message into error type and description."""
-
-    error = error.replace("ERROR:", "").strip()
-    
-    if " (line : " in error:
-        error = error.split(" (line : ")[0].strip()
-    
-    parts = error.split(":", 1)
-    err_type = parts[0].strip()
-    err_desc = parts[1].strip() if len(parts) > 1 else ""
-    
-    return err_type, err_desc
-
-
-def create_thought(error_message: str, mutation_category: str) -> str:
-    """Generates analysis thought process based on error type."""
-    
-    if mutation_category == "none":
-        thought = (
-            "Let's think step-by-step.\n"
-            "Checking the rules, reading the code.\n"
-            "The code seems to be in-line with all the presented rules and does not have any syntax errors."
-        )
-    
-    elif mutation_category == "domain":
-        error_type, error_desc = parse_error_message(error_message)
-        solution = SOLUTION_MAP.get(error_type, "")
-        thought = (
-            "Let's think step-by-step.\n"
-            "Checking the rules, reading the code.\n"
-            f"{error_desc}\n"
-            f"{solution}"
-        )
-    
-    elif mutation_category == "syntax":
-        thought = (
-            "Let's think step-by-step.\n"
-            "The compiler reports syntax errors.\n"
-            "To solve this, we need to fix the syntax issues in the code at the reported lines."
-        )
-    else:
-        raise ValueError(f"Unknown mutation category: {mutation_category}")
-
-    return f"<THINK>\n{thought}\n</THINK>\n"
-    
-    
-def create_prompt(error_message: str, mutation_category: str, bad_code: str, add_rules: bool=True) -> str:
-    """Creates a prompt for the LLM based on error type."""
+def create_prompt(error_message: str, mutation_category: str, bad_code: str, add_rules: bool = True) -> str:
 
     if mutation_category == "syntax":
         prompt = (
-            "Analyze and repair the following SysML v2 code for errors reported by the compiler.\n"
+            "The following SysML v2 code contains compiler-reported syntax errors.\n"
+            "Repair the code so that it compiles successfully.\n"
             "\n"
-            "### Compiler Error:\n"
+            "Compiler Error:\n"
             f"{error_message}\n"
         )
-    
-    elif add_rules:  # for domain and correct examples
-        domain_rules = get_domain_rules(bad_code)
-        prompt = (
-            "Analyze and repair the following SysML v2 code if there are any potential domain or connection inconsistencies or mistakes.\n"
-            "Use these relevant rules to identify and fix any potential mistakes.\n"
-            f"{domain_rules}\n"
-        )
+
     else:
         prompt = (
-            "Analyze and repair the following SysML v2 code if there are any potential domain or connection inconsistencies or mistakes.\n"
+            "Check the SysML v2 code below for correctness with respect to the given domain constraints.\n"
+            "Repair the code if it is incorrect.\n"
+            "If the code is correct, simply report it as correct without rewriting it again.\n"
+            "\n"
         )
 
-    return prompt + f"\n\n### Code: \n```\n{bad_code}\n```"
+        if add_rules:
+            domain_rules = get_domain_rules(bad_code)
+            prompt += f"{domain_rules}\n"
+
+    prompt += (
+        "\nCode:\n"
+        "```sysml\n"
+        f"{bad_code}\n"
+        "```"
+    )
+
+    return prompt
+
+
+def create_response(mutation_category: str, answer: str | None) -> str:
+
+    if mutation_category == "none":
+        return (
+            "CODE STATUS = CORRECT\n"
+            "NO CHANGES REQUIRED"
+        )
+
+    return (
+        "CODE STATUS = INCORRECT\n"
+        "```sysml\n"
+        f"{answer}\n"
+        "```"
+    )
 
 
 def processing_function(example, tokenizer) -> dict:
     """Create patches, fix, prompts, fix responses, chat and its length for an entry"""
-    try:
-        
-        error_msg = example["error_message"]
-        category = example["mutation_category"]
-        
-        # comments are removed due to them being leftover during dataset synthesis
-        bad_code = remove_comments(example["bad_code"])
-        good_code = remove_comments(example["good_code"])
+  
+    error_msg = example["error_message"]
+    category = example["mutation_category"]
+    
+    # comments are removed due to them being leftover during dataset synthesis
+    bad_code = remove_comments(example["bad_code"])
+    good_code = remove_comments(example["good_code"])
 
-        diff_patch = create_diff_patch(bad_code, good_code)
-        diff_patch = remove_file_headers(diff_patch)
-        
-        base_prompt = create_prompt(error_msg, category, bad_code, add_rules=False) 
-        prompt = create_prompt(error_msg, category, bad_code, add_rules=True) 
-        
-        # this is only for length computation. 
-        chat = [
-            {"role": "user", "content": prompt},
-            {"role": "assistant", "content": f"```\n{diff_patch}\n```" + tokenizer.eos_token}
-        ]
+    diff_patch = create_diff_patch(bad_code, good_code)
 
-        # when training, chat template is applied automatically
-        ids = tokenizer.apply_chat_template(
-            chat,
-            tokenize=True,
-            add_generation_prompt=False,
-        )
+    base_prompt = create_prompt(error_msg, category, bad_code, add_rules=False) # without rules 
+    prompt = create_prompt(error_msg, category, bad_code, add_rules=True) 
 
-        return {
-            "bad_code": bad_code,
-            "good_code": good_code,
-            "diff_patch": diff_patch,
-            "base_prompt": base_prompt,
-            "prompt": prompt,
-            "length": len(ids),
-        }
+    code_resp = create_response(category, good_code)
+    patch_resp = create_response(category, diff_patch)
+    
+    # this is only for length computation 
+    chat = [
+        {"role": "user", "content": "You are a SysML v2 expert."},
+        {"role": "user", "content": prompt},
+        {"role": "assistant", "content": patch_resp + tokenizer.eos_token}
+    ]
 
-    except Exception as e:
-        raise RuntimeError(f"Error encountered at entry id {example["id"]}")
+    # when training, chat template is applied automatically
+    ids = tokenizer.apply_chat_template(
+        chat,
+        tokenize=True,
+        add_generation_prompt=False,
+    )
+
+    return {
+        "bad_code": bad_code,
+        "good_code": good_code,
+        "diff_patch": diff_patch,
+        "base_prompt": base_prompt,
+        "prompt": prompt,
+        "code_response": code_resp,
+        "patch_response": patch_resp,
+        "length": len(ids),
+    }
 
 
 def split_dataset(

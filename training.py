@@ -100,6 +100,9 @@ def get_training_config(cfg):
 def load_tokenizer(model_name: str):
     """Load and configure tokenizer."""
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+
+    if getattr(tokenizer, "chat_template", None) is None:
+        raise ValueError("Tokenizer does not have a chat template.")
     
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -110,17 +113,17 @@ def load_tokenizer(model_name: str):
 def compile_chat(example, tokenizer, training_type):
     """Compile chat messages from prompts and responses."""
 
-    prompt = example["prompt"] # rules are always added during training
-
-    if training_type == "code": # output code
-        response = example["good_code"]
-    else: # output diff patch
-        response = example["diff_patch"]
+    prompt = example["prompt"]
+    
+    if training_type == "patch": 
+        response = example["patch_response"]    
+    else: 
+        response = example["code_response"]
 
     chat = [
-        {"role": "user", "content": "You are a SysML v2 expert."},
+        {"role": "system", "content": "You are a SysML v2 expert."},
         {"role": "user", "content": prompt},
-        {"role": "assistant", "content": f"```\n{response}\n```" + tokenizer.eos_token}
+        {"role": "assistant", "content": response + tokenizer.eos_token}
     ]
 
     return {"messages": chat}

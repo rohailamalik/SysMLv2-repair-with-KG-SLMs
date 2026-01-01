@@ -1,6 +1,6 @@
 import subprocess, re
-from difflib import SequenceMatcher
 from pathlib import Path
+from dataclasses import dataclass
 
 HUNK_RE = re.compile(r'^@@ -(\d+),(\d+) \+(\d+),(\d+) @@')
 
@@ -11,8 +11,32 @@ OLD = Path("__old.txt")
 NEW = Path("__new.txt")
 TARGET = OLD
 
+@dataclass
+class Hunk:
+    lines: list[tuple[str, str]]  # (prefix, content)
 
-def create_diff_patch(old_code: str, new_code: str) -> str:
+
+def remove_comments(code: str) -> str:
+    """Normalize code by removing all comments and empty lines"""
+    out = []
+    in_string = False
+
+    for line in code.replace('\r\n', '\n').replace('\r', '\n').split('\n'):
+        i = 0
+        while i < len(line) - 1:
+            c = line[i]
+            if c == '"':
+                in_string = not in_string
+            if not in_string and line[i:i+2] == '//':
+                line = line[:i]
+                break
+            i += 1
+        out.append(line.rstrip())
+
+    return '\n'.join(l for l in out if l.strip())
+
+
+def build_diff_patch(old_code: str, new_code: str) -> str:
     """Creates a diff patch between old and new code, using DIFF"""
     
     try:
@@ -40,55 +64,6 @@ def create_diff_patch(old_code: str, new_code: str) -> str:
     finally:
         OLD.unlink(missing_ok=True)
         NEW.unlink(missing_ok=True)
-        
-
-def apply_diff_patch(code: str, patch: str) -> tuple[str, bool]:
-    """Applies a diff patch to given code through PATCH"""
-
-    try:
-        with open(TARGET, "w", newline="\n", encoding="utf-8") as f:
-            f.write(code if code.endswith("\n") else code + "\n")
-
-        result = subprocess.run(
-            [PATCH, "-p0", TARGET],
-            input=patch,
-            text=True,
-            capture_output=True,
-        )
-
-        # GNU patch semantics:
-        # 0 = clean
-        # 1 = applied with fuzz/offsets
-        # 2 = failed
-
-        if result.returncode == 2:
-            return code, False
-
-        with open(TARGET) as f:
-            return f.read(), True
-    
-    except Exception:
-        raise
-
-    finally: 
-        TARGET.unlink(missing_ok=True)
-
-
-def remove_comments(code: str) -> str:
-    """Remove all // commments from SysML v2 code"""
-    lines = code.split('\n')
-    cleaned_lines = []
-    
-    for line in lines:
-        # Find // and remove everything from that point onward
-        comment_index = line.find('//')
-        if comment_index != -1:
-            line = line[:comment_index]
-        
-        if line.strip():
-            cleaned_lines.append(line)
-    
-    return '\n'.join(cleaned_lines)
 
 
 def remove_file_headers(patch: str) -> str:
@@ -101,116 +76,60 @@ def remove_file_headers(patch: str) -> str:
         if not (line.startswith("+++") or line.startswith("---")):
             newlines.append(line)
 
-    return "\n".join(newlines)
+    return "\n".join(newlines)   
 
 
-def fix_file_headers(patch: str) -> str:
-    """Add a generic file header to the diff patch"""
-    patch = remove_file_headers(patch) # just to be safe
-    return "--- __old.txt	2025-12-21 16:19:42.829747600 +0500\n+++ __new.txt	2025-12-21 16:19:42.830746100 +0500\n"+patch
+def create_diff_patch(bad_code: str, good_code: str) -> str:
+    """Create a diff patch between bad and good code for dataset"""
+    return remove_file_headers(build_diff_patch(bad_code, good_code))
 
 
-def fix_patch_line_counts(patch: str) -> str:
-    """Check if the line number counts in each diff header are actually correct, and fix if not"""
-    lines = patch.splitlines()
-    out = []
-    i = 0
+def parse_unified_diff(diff_text: str) -> list[Hunk]:
+    hunks = []
+    current = None
 
-    while i < len(lines):
-        line = lines[i]
-        m = HUNK_RE.match(line)
+    for line in diff_text.splitlines():
+        if line.startswith('@@'):
+            if current:
+                hunks.append(Hunk(current))
+            current = []
+        elif current is not None and line[:1] in {' ', '+', '-'}:
+            current.append((line[0], line[1:]))
 
-        if not m:
-            out.append(line)
-            i += 1
-            continue
+    if current:
+        hunks.append(Hunk(current))
 
-        old_start, old_cnt, new_start, new_cnt = map(int, m.groups())
-
-        old_actual = 0
-        new_actual = 0
-        hunk_lines = []
-        i += 1
-
-        while i < len(lines):
-            l = lines[i]
-            if l.startswith('@@ '):
-                break
-            if l.startswith(' '):
-                old_actual += 1
-                new_actual += 1
-            elif l.startswith('-'):
-                old_actual += 1
-            elif l.startswith('+'):
-                new_actual += 1
-            hunk_lines.append(l)
-            i += 1
-
-        if old_actual != old_cnt or new_actual != new_cnt:
-            line = f"@@ -{old_start},{old_actual} +{new_start},{new_actual} @@"
-
-        out.append(line)
-        out.extend(hunk_lines)
-
-    return "\n".join(out)
+    return hunks
 
 
-def apply_generated_patch(code: str, patch: str) -> tuple[str, bool]:
-    """Applies an LLM generated patch to given code by first validating and fixing it"""
-    
-    patch = remove_comments(patch) # llm may add comments
-    patch = fix_file_headers(patch) # add a dummy header
-    patch = fix_patch_line_counts(patch) # check and fix line counts
-    
-    fixed_code, status = apply_diff_patch(code, patch) 
-    return fixed_code, status
+def hunk_to_match_lines(hunk: Hunk) -> list[str]:
+    return [text for prefix, text in hunk.lines if prefix in {' ', '-'}]
 
 
-def extract_code_blocks(text: str) -> list[str]:
-    """Extracts all code blocks present in a text, using the ``` and then optionally some language identifier"""
-    return re.findall(r'```(?:\w+\n?)?(.*?)```', text, re.DOTALL)
+def hunk_to_replacement_lines(hunk: Hunk) -> list[str]:
+    return [text for prefix, text in hunk.lines if prefix in {' ', '+'}]
 
 
-def normalize_code(code: str, remove_indents: bool=False) -> str:
-    """Normalize code by removing all whitespaces and optionally indents"""
-    
-    code = code.replace("\r\n", "\n")
-    
-    code = code.strip()
-    #code = re.sub(r"\s+", " ", code)
-    return code
+def find_subsequence(haystack: list[str], needle: list[str]) -> int:
+    n = len(needle)
+    for i in range(len(haystack) - n + 1):
+        if haystack[i:i+n] == needle:
+            return i
+    return -1
 
 
-def remove_line_headers(patch: str) -> str:
-    """Removes @@ line headers from the patch to compare"""
-    return "\n".join([line for line in patch.splitlines() if not line.startswith("@@")])
+def apply_diff_patch(source: str, diff_text: str) -> tuple[str, bool]:
+    lines = source.splitlines()
+    hunks = parse_unified_diff(diff_text)
 
+    for hunk in hunks:
+        match_lines = hunk_to_match_lines(hunk)
+        replacement = hunk_to_replacement_lines(hunk)
 
-def get_patch_similarity(patch: str, true_patch: str) -> str:
-    """Process LLM generated patch for comparing with ground truth"""
-    #patch = remove_comments(patch) # llm may add comments
-    
-    patch = remove_line_headers(patch)
-    true_patch = remove_line_headers(patch)
+        idx = find_subsequence(lines, match_lines)
+        if idx == -1:
+            return source, False
 
-    return SequenceMatcher(None, patch, true_patch).ratio()
+        lines[idx:idx + len(match_lines)] = replacement
 
-
-def remove_empty_lines(s: str) -> str:
-    return "\n".join(line for line in s.splitlines() if line.strip())
-
-
-def get_code_similarity(good_code: str, fixed_code: str, remove_indents: bool=False) -> float:
-    """Computes similarity between a model-fixed code and ground truth"""
-
-    #fixed_code = remove_comments(fixed_code) # llm may add comments
-
-    #fixed_code = normalize_code(fixed_code, remove_indents)
-    #good_code = normalize_code(good_code, remove_indents)
-
-    fixed_code = remove_empty_lines(fixed_code)
-    good_code = remove_empty_lines(good_code)
-
-    return SequenceMatcher(None, good_code, fixed_code).ratio()
-
-
+    return "\n".join(lines), True

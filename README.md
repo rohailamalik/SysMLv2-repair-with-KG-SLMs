@@ -1,79 +1,68 @@
-### You need at least java 18
+# SysML v2 Repair with Domain-Aware Language Models
 
-- **Java 21** (JDK from Eclipse Adoptium or equivalent)
-  - Download from: https://adoptium.net/
-  - This project was developed with Eclipse Adoptium JDK 21.0.6.7
+This repository contains code for fine-tuning and evaluating small language models for repairing **SysML v2 models** with **syntactic and semantic errors**.
 
-### Clone the repo you will have:
+The code accompanies the paper:
 
-1. **Standalone JAR** 
-   - `org.omg.sysml.interactive-0.52.0-SNAPSHOT-all.jar`
-   - See "Building the Standalone JAR" section below
+**Automated Semantic Fault Localization in SysML v2:  
+A Human-in-the-Loop Framework Using Knowledge-Graph Augmented LLMs**  
+(to appear at **INCOSE 2026**).
 
-2. **SysML Standard Library**
-   - Located in the `sysml.library` directory of the SysML v2 Pilot Implementation
-   - Required for resolving standard imports (ISQ, SI, ScalarValues, etc.)
+## Overview
+
+The repository supports the full pipeline for:
+
+- Compiling and formatting datasets for model training and evaluation
+- Fine-tuning instruction-tuned language models using LoRA
+- Testing models on SysML v2 repair tasks
+- Analyzing generated repairs against ground-truth models
+
+For each example, SysML v2 code is provided to the model along with:
+- Compiler error messages (for syntactic errors), or
+- Relevant domain rules (for semantic or uncaught errors)
+
+Semantic errors are not detected by the SysML v2 compiler and therefore require domain knowledge to localize and repair.
+
+## Models
+
+The following instruction-tuned models are considered:
+
+- **Qwen2.5-Coder 1.5B**
+- **DeepSeek-Coder 6.7B**
+
+Each base model is evaluated under multiple configurations:
+- Without domain rules
+- With domain rules appended to prompts
+- Fine-tuned to generate repaired SysML v2 code
+- Fine-tuned to generate unified diff patches
+
+Fine-tuning is performed separately for code repair and patch generation tasks.
+
+## Dataset and Artifacts
+
+The repository includes code for:
+- Dataset synthesis and compilation
+- Prompt and response formatting
+- Patch creation and application
+- Training, testing, and result analysis
+
+**Note:**  
+Model weights and datasets are provided as compressed archives and must be extracted into the repository for the code to function correctly.
+
+---
 
 ## Repository Structure
 
-```
-workspace/
-├── ParseSysML.java              # Main parser entry point
-├── SysMLSerializer.java         # Custom AST-to-code serializer
-├── test2.sysml                  # Example test file
-├── org.omg.sysml.interactive-0.52.0-SNAPSHOT-all.jar  # Standalone JAR
-└── sysml.library/               # Standard library directory (from SysML v2 repo)
-```
-
-## Setup Instructions
-
-### 1. Install Java 21
-
-**Windows (inside CMD):**
-# Set environment variables:
-set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21.0.6.7-hotspot
-
-set PATH=%JAVA_HOME%\bin;%PATH%
-
-
-
-**Important:** The `sysml.library` directory must be present to resolve standard library imports like `ISQ::*`, `SI::*`, and `ScalarValues::*`.
-
-### 3. Update Library Path in ParseSysML.java
-
-Edit `ParseSysML.java` and update line 32 to point to your `sysml.library` directory:
-
-```java
-String libraryPath = "C:/path/to/your/workspace/sysml.library";
-```
-
-Also update the path to the test file in line 41 inside `ParseSysML.java`:
-```java
-String libraryPath = "C:/Haitham/sysml-test/test2.sysml";
-```
-
-## Usage
-
-### Compile
-
-**Windows:**
-```batch
-javac -cp org.omg.sysml.interactive-0.52.0-SNAPSHOT-all.jar ParseSysML.java SysMLSerializer.java
-```
-
-### Run
-
-**Windows:**
-```batch
-java -cp .;org.omg.sysml.interactive-0.52.0-SNAPSHOT-all.jar ParseSysML
-```
-
-### What It Does
-
-The program will:
-1. Initialize the SysML v2 parser with proper standalone setup
-2. Load the standard library from the specified path
-3. Parse the input file (`test2.sysml`) into an AST
-4. Print the AST structure to console
-5. Serialize the AST back to SysML code using the custom serializer
-6. Print the serialized code
+- `results/`: Outputs from LoRA fine-tuning and testing across all configurations.
+- `knowledge/`: Domain knowledge graphs used for semantic error localization.
+- `config.py`: Training and testing configuration parameters.
+- `dataset_compilation.ipynb`: Dataset compilation and splitting notebook.
+- `formatting.py`: Prompt and response formatting utilities.
+- `patching.py`: Unified diff patch creation and application.
+- `generate_domain_aware.ipynb`: Semantic error synthesis notebook.
+- `training.py`: LoRA fine-tuning script.
+- `testing.py`: Autoregressive evaluation script.
+- `results_analysis.ipynb`: Results analysis notebook.
+- `inference_testing.ipynb`: Interactive inference testing notebook.
+- `hpc_run.sh`: Cluster execution script.
+- `environment.yml`: Mamba environment specification.

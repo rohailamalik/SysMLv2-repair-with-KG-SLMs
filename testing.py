@@ -78,6 +78,9 @@ def setup_paths(model_name: str, test_type: str):
 def load_tokenizer(model_name: str):
     """Load and configure tokenizer."""
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+
+    if getattr(tokenizer, "chat_template", None) is None:
+        raise ValueError("Tokenizer does not have a chat template.")
     
     tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
@@ -89,29 +92,28 @@ def compile_full_prompt(example, test_type: str, tokenizer):
     """Compile prompt with system and user prompt based on test type."""
 
     if test_type == "baseline":
-        user_prompt = example["base_prompt"] 
-    else: # rules are added in rag_only, fine_tuned_code or fine_tuned_patch
-        user_prompt = example["prompt"]
+        prompt = example["base_prompt"] 
+    else:
+        prompt = example["prompt"]
     
-    prompt = [
+    full_prompt = [
         {"role": "system", "content": "You are a SysML v2 expert."},
-        {"role": "user", "content": user_prompt}
+        {"role": "user", "content": prompt}
     ]
     
-    prompt = tokenizer.apply_chat_template(
-        prompt,
+    full_prompt = tokenizer.apply_chat_template(
+        full_prompt,
         tokenize=False,
         add_generation_prompt=True
     )
 
-    return {"messages": prompt}
+    return {"messages": full_prompt}
 
 
 def load_dataset(test_data_path: Path, test_type: str, tokenizer):
     """Load and prepare test dataset."""
     ds_test = Dataset.from_pandas(pd.read_json(test_data_path, lines=True))
     
-    # Filter dataset for RAG-only type
     if test_type == "rag_only":
         # RAG includes rules which do not affect syntax examples at all, drop them
         ds_test = ds_test.filter(lambda x: x['mutation_category'] != 'syntax')
