@@ -1,12 +1,6 @@
 # SysML v2 Repair with Domain-Aware Language Models
 
-This repository contains code for fine-tuning and evaluating small language models for repairing **SysML v2 models** with **syntactic and semantic errors**.
-
-The code accompanies the paper:
-
-**Automated Semantic Fault Localization in SysML v2:  
-A Human-in-the-Loop Framework Using Knowledge-Graph Augmented LLMs**  
-(to appear at **INCOSE 2026**).
+This repository contains code for fine-tuning and evaluating small language models (augmented through a rule knowledge graph) for repairing **SysML v2 models** with **syntactic and semantic errors**.
 
 ## Overview
 
@@ -66,3 +60,19 @@ Model weights and datasets are provided as compressed archives and must be extra
 - `inference_testing.ipynb`: Interactive inference testing notebook.
 - `hpc_run.sh`: Cluster execution script.
 - `environment.yml`: Mamba environment specification.
+
+## Citation
+
+If you use this repository in your research, please cite:
+
+```bibtex
+@inproceedings{alshami2026sysml,
+  title={Automated Semantic Fault Localization in SysML v2: A Human-in-the-Loop Framework Using Knowledge-Graph Augmented LLMs},
+  author={Al-Shami, Haitham and Malik, Rohail and Ala-Laurinaho, Riku and Veps{\"a}l{\"a}inen, Jari and Viitala, Raine},
+  booktitle={Proceedings of the 36th INCOSE International Symposium},
+  year={2026},
+  address={Yokohama, Japan},
+  month={June},
+  date={16}
+}
+```
