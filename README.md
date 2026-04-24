@@ -1,6 +1,6 @@
 # SysML v2 Repair with Domain-Aware Language Models
 
-This repository contains code for fine-tuning and evaluating small language models (augmented through a rule knowledge graph) for repairing **SysML v2 models** with **syntactic and semantic errors**.
+This repository contains code for fine-tuning and evaluating small language models (augmented through a rule knowledge graph) for repairing **SysML v2 models** with **syntactic and semantic errors**. The fine-tuned model adapters and dataset can be found [here](https://huggingface.co/rohhaiil)
 
 ## Overview
 
@@ -19,10 +19,10 @@ Semantic errors are not detected by the SysML v2 compiler and therefore require 
 
 ## Models
 
-The following instruction-tuned models are considered:
+The following models are fine-tuned on the [synthesized dataset](https://huggingface.co/datasets/rohhaiil/SysMLv2_Repair_with_SLMs):
 
-- **Qwen2.5-Coder 1.5B**
-- **DeepSeek-Coder 6.7B**
+- **Qwen2.5-Coder 1.5B** ([code](https://huggingface.co/rohhaiil/SysMLv2-Repair-Qwen2.5-Coder-1.5B-Instruct-Code-LoRA), [patch](https://huggingface.co/rohhaiil/SysMLv2-Repair-Qwen2.5-Coder-1.5B-Instruct-Patch-LoRA))
+- **DeepSeek-Coder 6.7B** ([code](https://huggingface.co/rohhaiil/SysMLv2-Repair-DeepSeek-Coder-6.7B-Instruct-Code-LoRA), [patch](https://huggingface.co/rohhaiil/SysMLv2-Repair-DeepSeek-Coder-6.7B-Instruct-Patch-LoRA))
 
 Each base model is evaluated under multiple configurations:
 - Without domain rules
@@ -39,9 +39,6 @@ The repository includes code for:
 - Prompt and response formatting
 - Patch creation and application
 - Training, testing, and result analysis
-
-**Note:**  
-Model weights and datasets are provided as compressed archives and must be extracted into the repository for the code to function correctly.
 
 ---
 
